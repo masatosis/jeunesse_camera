@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="ジュネス栗駒">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <title>ジュネス栗駒スキー場 ライブカメラ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+        }
+
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            /* iPhoneのセーフエリアに対応 */
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        }
+
+        #camera-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        #camera-image {
+            max-width: 100%;
+            max-height: 100%;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #fff;
+            font-family: sans-serif;
+            font-size: 16px;
+            display: none;
+        }
+
+        #error {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ff6b6b;
+            font-family: sans-serif;
+            font-size: 14px;
+            text-align: center;
+            padding: 20px;
+            display: none;
+        }
+
+        /* タップで更新を一時停止できるインジケーター */
+        #status {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: sans-serif;
+            font-size: 12px;
+            display: none;
+        }
+
+        .visible {
+            display: block !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="camera-container">
+        <img id="camera-image" alt="ジュネス栗駒スキー場 ライブカメラ">
+        <div id="loading">読み込み中...</div>
+        <div id="error">映像の読み込みに失敗しました<br>タップして再試行</div>
+        <div id="status"></div>
+    </div>
+
+    <script>
+        const CAMERA_URL = 'https://hito4.e-apli.net/naruse_cam10/SnapshotJPEG';
+        const REFRESH_INTERVAL = 100; // ミリ秒
+
+        let timerId = null;
+        let isRunning = true;
+        let errorCount = 0;
+        const MAX_ERRORS = 5;
+
+        const cameraImage = document.getElementById('camera-image');
+        const loading = document.getElementById('loading');
+        const error = document.getElementById('error');
+        const status = document.getElementById('status');
+
+        function loadCamera() {
+            if (!isRunning) return;
+
+            // タイムスタンプを追加してキャッシュを防ぐ
+            const timestamp = new Date().getTime();
+            const imageUrl = `${CAMERA_URL}?${timestamp}`;
+
+            cameraImage.src = imageUrl;
+        }
+
+        function onImageLoad() {
+            errorCount = 0;
+            loading.classList.remove('visible');
+            error.classList.remove('visible');
+
+            if (isRunning) {
+                timerId = setTimeout(loadCamera, REFRESH_INTERVAL);
+            }
+        }
+
+        function onImageError() {
+            errorCount++;
+
+            if (errorCount >= MAX_ERRORS) {
+                error.classList.add('visible');
+                isRunning = false;
+                status.textContent = '停止中';
+                status.classList.add('visible');
+            } else {
+                // エラーでも続行
+                if (isRunning) {
+                    timerId = setTimeout(loadCamera, REFRESH_INTERVAL);
+                }
+            }
+        }
+
+        // 画像の読み込みイベント
+        cameraImage.addEventListener('load', onImageLoad);
+        cameraImage.addEventListener('error', onImageError);
+
+        // タップで一時停止/再開
+        let tapTimeout = null;
+        document.getElementById('camera-container').addEventListener('click', function() {
+            // ダブルタップ防止
+            if (tapTimeout) return;
+
+            tapTimeout = setTimeout(() => {
+                tapTimeout = null;
+            }, 300);
+
+            if (errorCount >= MAX_ERRORS) {
+                // エラー状態の場合は再試行
+                errorCount = 0;
+                error.classList.remove('visible');
+                isRunning = true;
+                status.classList.remove('visible');
+                loadCamera();
+            } else {
+                // 通常時は一時停止/再開
+                isRunning = !isRunning;
+
+                if (isRunning) {
+                    status.classList.remove('visible');
+                    loadCamera();
+                } else {
+                    if (timerId) {
+                        clearTimeout(timerId);
+                        timerId = null;
+                    }
+                    status.textContent = '一時停止中（タップで再開）';
+                    status.classList.add('visible');
+                }
+            }
+        });
+
+        // ページを離れる時にタイマーをクリア
+        window.addEventListener('beforeunload', function() {
+            if (timerId) {
+                clearTimeout(timerId);
+            }
+        });
+
+        // 初回読み込み
+        loading.classList.add('visible');
+        loadCamera();
+    </script>
+</body>
+</html>
