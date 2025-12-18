@@ -2,7 +2,7 @@
   "name": "ジュネス栗駒スキー場 ライブカメラ",
   "short_name": "ジュネス栗駒",
   "description": "ジュネス栗駒スキー場のライブカメラ映像",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",
