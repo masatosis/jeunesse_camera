@@ -1,8 +1,10 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="ジュネス栗駒">
@@ -16,7 +18,8 @@
             box-sizing: border-box;
         }
 
-        html, body {
+        html,
+        body {
             width: 100%;
             height: 100%;
             overflow: hidden;
@@ -46,6 +49,9 @@
             width: auto;
             height: auto;
             object-fit: contain;
+            transform-origin: center center;
+            transition: transform 0.1s ease-out;
+            touch-action: none;
         }
 
         #loading {
@@ -91,6 +97,7 @@
         }
     </style>
 </head>
+
 <body>
     <div id="camera-container">
         <img id="camera-image" alt="ジュネス栗駒スキー場 ライブカメラ">
@@ -155,7 +162,7 @@
 
         // タップで一時停止/再開
         let tapTimeout = null;
-        document.getElementById('camera-container').addEventListener('click', function() {
+        document.getElementById('camera-container').addEventListener('click', function () {
             // ダブルタップ防止
             if (tapTimeout) return;
 
@@ -189,9 +196,152 @@
         });
 
         // ページを離れる時にタイマーをクリア
-        window.addEventListener('beforeunload', function() {
+        window.addEventListener('beforeunload', function () {
             if (timerId) {
                 clearTimeout(timerId);
+            }
+        });
+
+        // ピンチズーム機能
+        let currentScale = 1;
+        let initialScale = 1;
+        let initialDistance = 0;
+        let translateX = 0;
+        let translateY = 0;
+        let initialTranslateX = 0;
+        let initialTranslateY = 0;
+        let initialTouchCenter = { x: 0, y: 0 };
+        let isPinching = false;
+        let isPanning = false;
+        let lastTouchX = 0;
+        let lastTouchY = 0;
+
+        const MIN_SCALE = 1;
+        const MAX_SCALE = 5;
+
+        function getDistance(touch1, touch2) {
+            const dx = touch1.clientX - touch2.clientX;
+            const dy = touch1.clientY - touch2.clientY;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        function getTouchCenter(touch1, touch2) {
+            return {
+                x: (touch1.clientX + touch2.clientX) / 2,
+                y: (touch1.clientY + touch2.clientY) / 2
+            };
+        }
+
+        function updateTransform() {
+            cameraImage.style.transform = `translate(${translateX}px, ${translateY}px) scale(${currentScale})`;
+        }
+
+        function constrainTranslation() {
+            if (currentScale <= 1) {
+                translateX = 0;
+                translateY = 0;
+                return;
+            }
+
+            const rect = cameraImage.getBoundingClientRect();
+            const containerRect = document.getElementById('camera-container').getBoundingClientRect();
+
+            const scaledWidth = rect.width;
+            const scaledHeight = rect.height;
+
+            const maxTranslateX = Math.max(0, (scaledWidth - containerRect.width) / 2);
+            const maxTranslateY = Math.max(0, (scaledHeight - containerRect.height) / 2);
+
+            translateX = Math.max(-maxTranslateX, Math.min(maxTranslateX, translateX));
+            translateY = Math.max(-maxTranslateY, Math.min(maxTranslateY, translateY));
+        }
+
+        cameraImage.addEventListener('touchstart', function (e) {
+            if (e.touches.length === 2) {
+                e.preventDefault();
+                isPinching = true;
+                isPanning = false;
+                initialDistance = getDistance(e.touches[0], e.touches[1]);
+                initialScale = currentScale;
+                initialTouchCenter = getTouchCenter(e.touches[0], e.touches[1]);
+                initialTranslateX = translateX;
+                initialTranslateY = translateY;
+            } else if (e.touches.length === 1 && currentScale > 1) {
+                e.preventDefault();
+                isPanning = true;
+                isPinching = false;
+                lastTouchX = e.touches[0].clientX;
+                lastTouchY = e.touches[0].clientY;
+            }
+        }, { passive: false });
+
+        cameraImage.addEventListener('touchmove', function (e) {
+            if (isPinching && e.touches.length === 2) {
+                e.preventDefault();
+                const currentDistance = getDistance(e.touches[0], e.touches[1]);
+                const scale = (currentDistance / initialDistance) * initialScale;
+                currentScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
+
+                // ピンチ中の移動も考慮
+                const currentCenter = getTouchCenter(e.touches[0], e.touches[1]);
+                translateX = initialTranslateX + (currentCenter.x - initialTouchCenter.x);
+                translateY = initialTranslateY + (currentCenter.y - initialTouchCenter.y);
+
+                constrainTranslation();
+                updateTransform();
+            } else if (isPanning && e.touches.length === 1 && currentScale > 1) {
+                e.preventDefault();
+                const deltaX = e.touches[0].clientX - lastTouchX;
+                const deltaY = e.touches[0].clientY - lastTouchY;
+
+                translateX += deltaX;
+                translateY += deltaY;
+
+                lastTouchX = e.touches[0].clientX;
+                lastTouchY = e.touches[0].clientY;
+
+                constrainTranslation();
+                updateTransform();
+            }
+        }, { passive: false });
+
+        cameraImage.addEventListener('touchend', function (e) {
+            if (e.touches.length < 2) {
+                isPinching = false;
+            }
+            if (e.touches.length === 0) {
+                isPanning = false;
+                // スケールが1以下になったらリセット
+                if (currentScale <= 1) {
+                    currentScale = 1;
+                    translateX = 0;
+                    translateY = 0;
+                    updateTransform();
+                }
+            }
+        });
+
+        // ダブルタップでリセット
+        let lastTapTime = 0;
+        cameraImage.addEventListener('touchend', function (e) {
+            if (e.touches.length === 0 && !isPinching) {
+                const currentTime = new Date().getTime();
+                const tapLength = currentTime - lastTapTime;
+                if (tapLength < 300 && tapLength > 0) {
+                    // ダブルタップ検出
+                    e.preventDefault();
+                    if (currentScale > 1) {
+                        // ズームアウト
+                        currentScale = 1;
+                        translateX = 0;
+                        translateY = 0;
+                    } else {
+                        // ズームイン
+                        currentScale = 2;
+                    }
+                    updateTransform();
+                }
+                lastTapTime = currentTime;
             }
         });
 
@@ -200,4 +350,5 @@
         loadCamera();
     </script>
 </body>
+
 </html>
